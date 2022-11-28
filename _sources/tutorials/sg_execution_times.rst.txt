@@ -5,18 +5,18 @@
 
 Computation times
 =================
-**02:18.356** total execution time for **tutorials** files:
+**02:06.527** total execution time for **tutorials** files:
 
 +-------------------------------------------------------------------------------+-----------+--------+
-| :ref:`sphx_glr_tutorials_coding_dqn.py` (``coding_dqn.py``)                   | 01:34.954 | 0.0 MB |
+| :ref:`sphx_glr_tutorials_coding_dqn.py` (``coding_dqn.py``)                   | 01:28.626 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
-| :ref:`sphx_glr_tutorials_torch_envs.py` (``torch_envs.py``)                   | 00:36.809 | 0.0 MB |
+| :ref:`sphx_glr_tutorials_torch_envs.py` (``torch_envs.py``)                   | 00:31.885 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
-| :ref:`sphx_glr_tutorials_torchrl_demo.py` (``torchrl_demo.py``)               | 00:06.548 | 0.0 MB |
+| :ref:`sphx_glr_tutorials_torchrl_demo.py` (``torchrl_demo.py``)               | 00:05.977 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
-| :ref:`sphx_glr_tutorials_tensordict_tutorial.py` (``tensordict_tutorial.py``) | 00:00.037 | 0.0 MB |
+| :ref:`sphx_glr_tutorials_tensordict_tutorial.py` (``tensordict_tutorial.py``) | 00:00.032 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
-| :ref:`sphx_glr_tutorials_multi_task.py` (``multi_task.py``)                   | 00:00.005 | 0.0 MB |
+| :ref:`sphx_glr_tutorials_multi_task.py` (``multi_task.py``)                   | 00:00.004 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
 | :ref:`sphx_glr_tutorials_coding_ddpg.py` (``coding_ddpg.py``)                 | 00:00.002 | 0.0 MB |
 +-------------------------------------------------------------------------------+-----------+--------+
