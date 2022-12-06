@@ -60,16 +60,19 @@ We do not aim at giving a SOTA implementation of the algorithm, but rather
 to provide a high-level illustration of TorchRL features in the context
 of this algorithm.
 
-.. GENERATED FROM PYTHON SOURCE LINES 44-82
+.. GENERATED FROM PYTHON SOURCE LINES 44-85
 
 .. code-block:: default
 
 
+
     import torch
     import tqdm
+    from functorch import vmap
     from IPython import display
     from matplotlib import pyplot as plt
     from tensordict import TensorDict
+    from tensordict.nn import get_functional
     from torch import nn
     from torchrl.collectors import MultiaSyncDataCollector
     from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
@@ -109,7 +112,7 @@ of this algorithm.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 83-88
+.. GENERATED FROM PYTHON SOURCE LINES 91-96
 
 Hyperparameters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -117,7 +120,7 @@ Let's start with our hyperparameters. This is a totally arbitrary list of
 hyperparams that we found to work well in practice. Hopefully the performance
 of the algorithm should not be too sentitive to slight variations of these.
 
-.. GENERATED FROM PYTHON SOURCE LINES 88-129
+.. GENERATED FROM PYTHON SOURCE LINES 96-137
 
 .. code-block:: default
 
@@ -169,7 +172,7 @@ of the algorithm should not be too sentitive to slight variations of these.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 130-145
+.. GENERATED FROM PYTHON SOURCE LINES 138-153
 
 **Note**: for fast rendering of the tutorial ``total_frames`` hyperparameter
 was set to a very low number. To get a reasonable performance, use a greater
@@ -187,7 +190,7 @@ Our environment builder has three arguments:
 - mean and standard deviation: we normalize the observations (images)
   with two parameters computed from a random rollout in the environment.
 
-.. GENERATED FROM PYTHON SOURCE LINES 145-176
+.. GENERATED FROM PYTHON SOURCE LINES 153-184
 
 .. code-block:: default
 
@@ -229,11 +232,11 @@ Our environment builder has three arguments:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 177-178
+.. GENERATED FROM PYTHON SOURCE LINES 185-186
 
 Compute normalizing constants:
 
-.. GENERATED FROM PYTHON SOURCE LINES 178-184
+.. GENERATED FROM PYTHON SOURCE LINES 186-192
 
 .. code-block:: default
 
@@ -252,11 +255,11 @@ Compute normalizing constants:
  .. code-block:: none
 
 
-    (0.9922325611114502, 0.07711293548345566)
+    (0.9912416934967041, 0.0823146179318428)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 185-194
+.. GENERATED FROM PYTHON SOURCE LINES 193-202
 
 The problem
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -268,7 +271,7 @@ policy. From gym:
 *goal is to balance the pole by applying forces in the left and right*
 *direction on the cart.*
 
-.. GENERATED FROM PYTHON SOURCE LINES 194-203
+.. GENERATED FROM PYTHON SOURCE LINES 202-211
 
 .. code-block:: default
 
@@ -288,7 +291,7 @@ policy. From gym:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 204-220
+.. GENERATED FROM PYTHON SOURCE LINES 212-228
 
 Building the model (Deep Q-network)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -307,7 +310,7 @@ Our network is wrapped in a ``QValueActor``, which will read the state-action
 values, pick up the one with the maximum value and write all those results
 in the input ``TensorDict``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 220-278
+.. GENERATED FROM PYTHON SOURCE LINES 228-284
 
 .. code-block:: default
 
@@ -345,18 +348,16 @@ in the input ``TensorDict``.
         print("Q-value network results:", tensordict)
 
         # make functional
-        factor, (_, buffers) = actor.make_functional_with_buffers(clone=True, native=True)
-        # making functional creates a copy of the params, which we don't want (i.e. we want the parameters from `actor` to match those in the params object),
-        # hence we create the params object in a second step
-        params = TensorDict({k: v for k, v in net.named_parameters()}, []).unflatten_keys(
-            "."
-        )
+        # here's an explicit way of creating the parameters and buffer tensordict.
+        # Alternatively, we could have used `params = make_functional(actor)` from
+        # tensordict.nn
+        params = TensorDict({k: v for k, v in actor.named_parameters()}, [])
+        buffers = TensorDict({k: v for k, v in actor.named_buffers()}, [])
+        params = params.update(buffers).unflatten_keys(".")  # creates a nested TensorDict
+        factor = get_functional(actor)
 
         # creating the target parameters is fairly easy with tensordict:
-        params_target, buffers_target = (
-            params.to_tensordict().detach(),
-            buffers.to_tensordict().detach(),
-        )
+        (params_target,) = (params.to_tensordict().detach(),)
 
         # we wrap our actor in an EGreedyWrapper for data collection
         actor_explore = EGreedyWrapper(
@@ -366,7 +367,7 @@ in the input ``TensorDict``.
             eps_end=eps_greedy_val_env,
         )
 
-        return factor, actor, actor_explore, params, buffers, params_target, buffers_target
+        return factor, actor, actor_explore, params, params_target
 
 
 
@@ -376,14 +377,14 @@ in the input ``TensorDict``.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 279-283
+.. GENERATED FROM PYTHON SOURCE LINES 285-289
 
 When creating the model, we initialize the network with an environment reset.
 We print the resulting tensordict instance to get an idea of what
 ``QValueActor`` (pay attention to the keys ``action``, ``action_value`` and
 ``chosen_action_value`` after calling the policy).
 
-.. GENERATED FROM PYTHON SOURCE LINES 283-298
+.. GENERATED FROM PYTHON SOURCE LINES 289-300
 
 .. code-block:: default
 
@@ -393,14 +394,10 @@ We print the resulting tensordict instance to get an idea of what
         actor,
         actor_explore,
         params,
-        buffers,
         params_target,
-        buffers_target,
     ) = make_model()
     params_flat = params.flatten_keys(".")
-    buffers_flat = buffers.flatten_keys(".")
     params_target_flat = params_target.flatten_keys(".")
-    buffers_target_flat = buffers_target.flatten_keys(".")
 
 
 
@@ -433,7 +430,7 @@ We print the resulting tensordict instance to get an idea of what
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 299-311
+.. GENERATED FROM PYTHON SOURCE LINES 301-313
 
 Regular DQN
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -448,7 +445,7 @@ We place the storage on disk using ``LazyMemmapStorage``. The only requirement
 of this storage is that the data given to it must always have the same
 shape. This storage will be instantiated later.
 
-.. GENERATED FROM PYTHON SOURCE LINES 311-318
+.. GENERATED FROM PYTHON SOURCE LINES 313-320
 
 .. code-block:: default
 
@@ -466,14 +463,14 @@ shape. This storage will be instantiated later.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 319-323
+.. GENERATED FROM PYTHON SOURCE LINES 321-325
 
 Our *data collector* will run two parallel environments in parallel, and
 deliver the collected tensordicts once at a time to the main process. We'll
 use the ``MultiaSyncDataCollector`` collector, which will collect data while
 the optimization is taking place.
 
-.. GENERATED FROM PYTHON SOURCE LINES 323-338
+.. GENERATED FROM PYTHON SOURCE LINES 325-340
 
 .. code-block:: default
 
@@ -499,11 +496,11 @@ the optimization is taking place.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 339-340
+.. GENERATED FROM PYTHON SOURCE LINES 341-342
 
 Our *optimizer* and the env used for evaluation
 
-.. GENERATED FROM PYTHON SOURCE LINES 340-345
+.. GENERATED FROM PYTHON SOURCE LINES 342-347
 
 .. code-block:: default
 
@@ -534,11 +531,11 @@ Our *optimizer* and the env used for evaluation
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 346-347
+.. GENERATED FROM PYTHON SOURCE LINES 348-349
 
 Various lists that will contain the values recorded for evaluation:
 
-.. GENERATED FROM PYTHON SOURCE LINES 347-359
+.. GENERATED FROM PYTHON SOURCE LINES 349-361
 
 .. code-block:: default
 
@@ -561,12 +558,12 @@ Various lists that will contain the values recorded for evaluation:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 360-362
+.. GENERATED FROM PYTHON SOURCE LINES 362-364
 
 Training loop
 ------------------------------
 
-.. GENERATED FROM PYTHON SOURCE LINES 362-493
+.. GENERATED FROM PYTHON SOURCE LINES 364-491
 
 .. code-block:: default
 
@@ -604,7 +601,7 @@ Training loop
 
                 # Compute action value (of the action actually taken) at time t
                 sampled_data_out = sampled_data.select(*actor.in_keys)
-                sampled_data_out = factor(sampled_data_out, params=params, buffers=buffers)
+                sampled_data_out = factor(sampled_data_out, params=params)
                 action_value = sampled_data_out["action_value"]
                 action_value = (action_value * action.to(action_value.dtype)).sum(-1)
                 with torch.no_grad():
@@ -613,7 +610,6 @@ Training loop
                     next_value = factor(
                         tdstep.select(*actor.in_keys),
                         params=params_target,
-                        buffers=buffers_target,
                     )["chosen_action_value"].squeeze(-1)
                     exp_value = reward + gamma * next_value * (1 - done)
                 assert exp_value.shape == action_value.shape
@@ -631,9 +627,6 @@ Training loop
                 for (key, p1) in params_flat.items():
                     p2 = params_target_flat[key]
                     params_target_flat.set_(key, tau * p1.data + (1 - tau) * p2.data)
-                for (key, p1) in buffers_flat.items():
-                    p2 = buffers_target_flat[key]
-                    buffers_target_flat.set_(key, tau * p1.data + (1 - tau) * p2.data)
 
             pbar.set_description(
                 f"error: {error: 4.4f}, value: {action_value.mean(): 4.4f}"
@@ -726,28 +719,28 @@ Training loop
 
  .. code-block:: none
 
-      0%|          | 0/500 [00:00<?, ?it/s]      6%|6         | 32/500 [00:03<00:52,  8.90it/s]Creating a MemmapStorage...
+      0%|          | 0/500 [00:00<?, ?it/s]      6%|6         | 32/500 [00:03<00:44, 10.63it/s]Creating a MemmapStorage...
     The storage is being created: 
-            action: /tmp/tmpxt4u4e2q, 0.00762939453125 Mb of storage (size: torch.Size([500, 2])).
-            action_value: /tmp/tmpjcwtufpr, 0.003814697265625 Mb of storage (size: torch.Size([500, 2])).
-            chosen_action_value: /tmp/tmpi615rpv_, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
-            done: /tmp/tmpgorzwnl0, 0.000476837158203125 Mb of storage (size: torch.Size([500, 1])).
-            mask: /tmp/tmp2oqtbmay, 0.000476837158203125 Mb of storage (size: torch.Size([500, 1])).
-            next.pixels: /tmp/tmp1lbklw94, 31.25 Mb of storage (size: torch.Size([500, 4, 64, 64])).
-            pixels: /tmp/tmp7p9wbz0x, 31.25 Mb of storage (size: torch.Size([500, 4, 64, 64])).
-            reward: /tmp/tmpdpnts198, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
-            step_count: /tmp/tmpfbetqb9y, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
-            traj_ids: /tmp/tmpiq3vumvg, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
-     13%|#2        | 64/500 [00:03<00:23, 18.81it/s]     19%|#9        | 96/500 [00:06<00:24, 16.22it/s]    error:  33.8738, value:  19.8027:  19%|#9        | 96/500 [00:07<00:24, 16.22it/s]    error:  33.8738, value:  19.8027:  26%|##5       | 128/500 [00:07<00:18, 20.05it/s]    error:  22.0476, value:  19.3094:  26%|##5       | 128/500 [00:08<00:18, 20.05it/s]    error:  22.0476, value:  19.3094:  32%|###2      | 160/500 [00:09<00:19, 17.71it/s]    error:  35.5909, value:  19.6888:  32%|###2      | 160/500 [00:09<00:19, 17.71it/s]    error:  35.5909, value:  19.6888:  38%|###8      | 192/500 [00:10<00:15, 20.50it/s]    error:  44.7069, value:  17.6380:  38%|###8      | 192/500 [00:11<00:15, 20.50it/s]    error:  44.7069, value:  17.6380:  45%|####4     | 224/500 [00:12<00:13, 20.91it/s]    error:  25.1250, value:  19.4775:  45%|####4     | 224/500 [00:12<00:13, 20.91it/s]    error:  25.1250, value:  19.4775:  51%|#####1    | 256/500 [00:13<00:10, 23.30it/s]    error:  24.4075, value:  18.8167:  51%|#####1    | 256/500 [00:13<00:10, 23.30it/s]    error:  24.4075, value:  18.8167:  58%|#####7    | 288/500 [00:14<00:09, 22.82it/s]    error:  20.9676, value:  19.1033:  58%|#####7    | 288/500 [00:15<00:09, 22.82it/s]    error:  20.9676, value:  19.1033:  64%|######4   | 320/500 [00:15<00:07, 24.96it/s]    error:  30.0373, value:  18.6527:  64%|######4   | 320/500 [00:16<00:07, 24.96it/s]    error:  30.0373, value:  18.6527:  70%|#######   | 352/500 [00:16<00:06, 24.06it/s]    error:  13.5129, value:  19.7583:  70%|#######   | 352/500 [00:17<00:06, 24.06it/s]    error:  13.5129, value:  19.7583:  77%|#######6  | 384/500 [00:18<00:05, 21.79it/s]    error:  15.5337, value:  19.7826:  77%|#######6  | 384/500 [00:19<00:05, 21.79it/s]    error:  15.5337, value:  19.7826:  83%|########3 | 416/500 [00:20<00:04, 19.62it/s]    error:  39.4875, value:  16.5978:  83%|########3 | 416/500 [00:21<00:04, 19.62it/s]    error:  39.4875, value:  16.5978:  90%|########9 | 448/500 [00:21<00:02, 21.44it/s]    error:  14.7150, value:  18.2856:  90%|########9 | 448/500 [00:22<00:02, 21.44it/s]    error:  14.7150, value:  18.2856:  96%|#########6| 480/500 [00:23<00:00, 20.58it/s]    error:  24.0570, value:  20.3914:  96%|#########6| 480/500 [00:24<00:00, 20.58it/s]    error:  24.0570, value:  20.3914: : 512it [00:24, 22.01it/s]                           error:  12.6135, value:  18.9477: : 512it [00:25, 22.01it/s]
+            action: /tmp/tmptcpp_st1, 0.00762939453125 Mb of storage (size: torch.Size([500, 2])).
+            action_value: /tmp/tmpeoj4l3u1, 0.003814697265625 Mb of storage (size: torch.Size([500, 2])).
+            chosen_action_value: /tmp/tmph8wuw12k, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
+            done: /tmp/tmpvlut3x_m, 0.000476837158203125 Mb of storage (size: torch.Size([500, 1])).
+            mask: /tmp/tmpbnpco8qk, 0.000476837158203125 Mb of storage (size: torch.Size([500, 1])).
+            pixels: /tmp/tmpzihxs460, 31.25 Mb of storage (size: torch.Size([500, 4, 64, 64])).
+            reward: /tmp/tmphhf4yz2i, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
+            step_count: /tmp/tmpo_pu_i6j, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
+            traj_ids: /tmp/tmpew_vlxu5, 0.0019073486328125 Mb of storage (size: torch.Size([500, 1])).
+            ('next', 'pixels'): /tmp/tmpq4qxyx91, 31.25 Mb of storage (size: torch.Size([500, 4, 64, 64])).
+     13%|#2        | 64/500 [00:03<00:18, 23.00it/s]     19%|#9        | 96/500 [00:04<00:19, 20.71it/s]    error:  22.9653, value:  19.7698:  19%|#9        | 96/500 [00:05<00:19, 20.71it/s]    error:  22.9653, value:  19.7698:  26%|##5       | 128/500 [00:06<00:16, 22.64it/s]    error:  33.6098, value:  17.4502:  26%|##5       | 128/500 [00:06<00:16, 22.64it/s]    error:  33.6098, value:  17.4502:  32%|###2      | 160/500 [00:07<00:15, 21.95it/s]    error:  2.8830, value:  19.2082:  32%|###2      | 160/500 [00:08<00:15, 21.95it/s]     error:  2.8830, value:  19.2082:  38%|###8      | 192/500 [00:08<00:11, 26.02it/s]    error:  59.3180, value:  19.5011:  38%|###8      | 192/500 [00:09<00:11, 26.02it/s]    error:  59.3180, value:  19.5011:  45%|####4     | 224/500 [00:09<00:10, 27.01it/s]    error:  31.7688, value:  18.7390:  45%|####4     | 224/500 [00:10<00:10, 27.01it/s]    error:  31.7688, value:  18.7390:  51%|#####1    | 256/500 [00:11<00:10, 23.84it/s]    error:  16.3958, value:  18.4154:  51%|#####1    | 256/500 [00:11<00:10, 23.84it/s]    error:  16.3958, value:  18.4154:  58%|#####7    | 288/500 [00:11<00:07, 28.42it/s]    error:  26.5970, value:  18.9849:  58%|#####7    | 288/500 [00:12<00:07, 28.42it/s]    error:  26.5970, value:  18.9849:  64%|######4   | 320/500 [00:12<00:06, 29.80it/s]    error:  22.9097, value:  18.4889:  64%|######4   | 320/500 [00:13<00:06, 29.80it/s]    error:  22.9097, value:  18.4889:  70%|#######   | 352/500 [00:13<00:04, 30.19it/s]    error:  12.8529, value:  19.6295:  70%|#######   | 352/500 [00:14<00:04, 30.19it/s]    error:  12.8529, value:  19.6295:  77%|#######6  | 384/500 [00:15<00:04, 26.65it/s]    error:  27.7997, value:  19.5223:  77%|#######6  | 384/500 [00:16<00:04, 26.65it/s]    error:  27.7997, value:  19.5223:  83%|########3 | 416/500 [00:16<00:03, 25.52it/s]    error:  27.8250, value:  18.9708:  83%|########3 | 416/500 [00:17<00:03, 25.52it/s]    error:  27.8250, value:  18.9708:  90%|########9 | 448/500 [00:18<00:02, 25.25it/s]    error:  33.8111, value:  19.0242:  90%|########9 | 448/500 [00:18<00:02, 25.25it/s]    error:  33.8111, value:  19.0242:  96%|#########6| 480/500 [00:19<00:00, 23.88it/s]    error:  32.1364, value:  19.0010:  96%|#########6| 480/500 [00:20<00:00, 23.88it/s]    error:  32.1364, value:  19.0010: : 512it [00:20, 25.58it/s]                           error:  19.4173, value:  18.7665: : 512it [00:21, 25.58it/s]
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 494-496
+.. GENERATED FROM PYTHON SOURCE LINES 492-494
 
 **Note**: As already mentioned above, to get a more reasonable performance,
 use a greater value for ``total_frames`` e.g. 500000.
 
-.. GENERATED FROM PYTHON SOURCE LINES 496-503
+.. GENERATED FROM PYTHON SOURCE LINES 494-501
 
 .. code-block:: default
 
@@ -776,7 +769,7 @@ use a greater value for ``total_frames`` e.g. 500000.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 504-521
+.. GENERATED FROM PYTHON SOURCE LINES 502-519
 
 .. code-block:: default
 
@@ -792,7 +785,7 @@ use a greater value for ``total_frames`` e.g. 500000.
             "grad_vals": grad_vals,
             "traj_lengths_training": traj_lengths,
             "traj_count": traj_count,
-            "weights": (params, buffers),
+            "weights": (params,),
         },
         "saved_results_td0.pt",
     )
@@ -804,7 +797,7 @@ use a greater value for ``total_frames`` e.g. 500000.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 522-538
+.. GENERATED FROM PYTHON SOURCE LINES 520-536
 
 TD-lambda
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -823,7 +816,7 @@ using its mask: by keeping a shape ``[Batch x timesteps]`` and giving this
 to the RB, we'll be creating a replay buffer of size
 ``[Capacity x timesteps]``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 538-543
+.. GENERATED FROM PYTHON SOURCE LINES 536-541
 
 .. code-block:: default
 
@@ -839,11 +832,11 @@ to the RB, we'll be creating a replay buffer of size
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 544-545
+.. GENERATED FROM PYTHON SOURCE LINES 542-543
 
 We reset the actor, the RB and the collector
 
-.. GENERATED FROM PYTHON SOURCE LINES 545-560
+.. GENERATED FROM PYTHON SOURCE LINES 543-554
 
 .. code-block:: default
 
@@ -853,14 +846,10 @@ We reset the actor, the RB and the collector
         actor,
         actor_explore,
         params,
-        buffers,
         params_target,
-        buffers_target,
     ) = make_model()
     params_flat = params.flatten_keys(".")
-    buffers_flat = buffers.flatten_keys(".")
     params_target_flat = params_target.flatten_keys(".")
-    buffers_target_flat = buffers_target.flatten_keys(".")
 
 
 
@@ -891,7 +880,7 @@ We reset the actor, the RB and the collector
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 561-580
+.. GENERATED FROM PYTHON SOURCE LINES 555-574
 
 .. code-block:: default
 
@@ -921,7 +910,7 @@ We reset the actor, the RB and the collector
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 581-586
+.. GENERATED FROM PYTHON SOURCE LINES 575-580
 
 .. code-block:: default
 
@@ -938,7 +927,7 @@ We reset the actor, the RB and the collector
 
  .. code-block:: none
 
-    error:  12.6135, value:  18.9477: : 512it [00:40, 22.01it/s]TensorDict(
+    TensorDict(
         fields={
             action: Tensor(torch.Size([2]), dtype=torch.int64),
             action_value: Tensor(torch.Size([2]), dtype=torch.float32),
@@ -952,7 +941,7 @@ We reset the actor, the RB and the collector
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 587-599
+.. GENERATED FROM PYTHON SOURCE LINES 581-593
 
 .. code-block:: default
 
@@ -975,7 +964,7 @@ We reset the actor, the RB and the collector
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 600-608
+.. GENERATED FROM PYTHON SOURCE LINES 594-602
 
 Training loop
 ------------------------------
@@ -986,7 +975,7 @@ There are very few differences with the training loop above:
   ``[Batch x max_size]``), and sent directly to the RB.
 - We use ``vec_td_lambda_advantage_estimate`` to compute the target value.
 
-.. GENERATED FROM PYTHON SOURCE LINES 608-746
+.. GENERATED FROM PYTHON SOURCE LINES 602-733
 
 .. code-block:: default
 
@@ -1017,19 +1006,15 @@ There are very few differences with the training loop above:
                 action = sampled_data["action"].clone()
 
                 sampled_data_out = sampled_data.select(*actor.in_keys)
-                sampled_data_out = factor(
-                    sampled_data_out, params=params, buffers=buffers, vmap=(None, None, 0)
-                )
+                sampled_data_out = vmap(factor, (0, None))(sampled_data_out, params)
                 action_value = sampled_data_out["action_value"]
                 action_value = (action_value * action.to(action_value.dtype)).sum(-1, True)
                 with torch.no_grad():
                     tdstep = step_mdp(sampled_data)
-                    next_value = factor(
-                        tdstep.select(*actor.in_keys),
-                        params=params_target,
-                        buffers=buffers_target,
-                        vmap=(None, None, 0),
-                    )["chosen_action_value"]
+                    next_value = vmap(factor, (0, None))(
+                        tdstep.select(*actor.in_keys), params
+                    )
+                    next_value = next_value["chosen_action_value"]
                 error = vec_td_lambda_advantage_estimate(
                     gamma,
                     lmbda,
@@ -1056,9 +1041,6 @@ There are very few differences with the training loop above:
                 for (key, p1) in params_flat.items():
                     p2 = params_target_flat[key]
                     params_target_flat.set_(key, tau * p1.data + (1 - tau) * p2.data)
-                for (key, p1) in buffers_flat.items():
-                    p2 = buffers_target_flat[key]
-                    buffers_target_flat.set_(key, tau * p1.data + (1 - tau) * p2.data)
 
             pbar.set_description(
                 f"error: {error: 4.4f}, value: {action_value.mean(): 4.4f}"
@@ -1154,59 +1136,59 @@ There are very few differences with the training loop above:
  .. code-block:: none
 
 
-      0%|          | 0/500 [00:00<?, ?it/s]    error:  12.6135, value:  18.9477: : 512it [00:40, 12.78it/s]
+      0%|          | 0/500 [00:00<?, ?it/s]    error:  19.4173, value:  18.7665: : 512it [00:33, 15.33it/s]
 
-      6%|6         | 32/500 [00:03<00:45, 10.39it/s]Creating a MemmapStorage...
+      6%|6         | 32/500 [00:02<00:37, 12.36it/s]Creating a MemmapStorage...
     The storage is being created: 
-            action: /tmp/tmpbq5lpm0r, 0.244140625 Mb of storage (size: torch.Size([500, 32, 2])).
-            action_value: /tmp/tmpttmspd9h, 0.1220703125 Mb of storage (size: torch.Size([500, 32, 2])).
-            chosen_action_value: /tmp/tmpf_5xmpwi, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
-            done: /tmp/tmpesaj1ags, 0.0152587890625 Mb of storage (size: torch.Size([500, 32, 1])).
-            mask: /tmp/tmpsd70t2y0, 0.0152587890625 Mb of storage (size: torch.Size([500, 32, 1])).
-            next.pixels: /tmp/tmpl7_cxzb7, 1000.0 Mb of storage (size: torch.Size([500, 32, 4, 64, 64])).
-            pixels: /tmp/tmpuc65vmmd, 1000.0 Mb of storage (size: torch.Size([500, 32, 4, 64, 64])).
-            reward: /tmp/tmpfqpw3_0c, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
-            step_count: /tmp/tmpg14q758r, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
-            traj_ids: /tmp/tmp_ab0lunk, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
+            action: /tmp/tmppyi5o0ic, 0.244140625 Mb of storage (size: torch.Size([500, 32, 2])).
+            action_value: /tmp/tmpzb3g70wb, 0.1220703125 Mb of storage (size: torch.Size([500, 32, 2])).
+            chosen_action_value: /tmp/tmp9pkrr4j3, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
+            done: /tmp/tmpyxt3aolg, 0.0152587890625 Mb of storage (size: torch.Size([500, 32, 1])).
+            mask: /tmp/tmpvefqg9c_, 0.0152587890625 Mb of storage (size: torch.Size([500, 32, 1])).
+            pixels: /tmp/tmpcjkq4lpv, 1000.0 Mb of storage (size: torch.Size([500, 32, 4, 64, 64])).
+            reward: /tmp/tmpemf9_nlq, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
+            step_count: /tmp/tmpv6913q50, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
+            traj_ids: /tmp/tmplxx_kxoo, 0.06103515625 Mb of storage (size: torch.Size([500, 32, 1])).
+            ('next', 'pixels'): /tmp/tmpsqnsjdey, 1000.0 Mb of storage (size: torch.Size([500, 32, 4, 64, 64])).
 
-     13%|#2        | 64/500 [00:12<01:31,  4.75it/s]
-     19%|#9        | 96/500 [00:14<00:58,  6.93it/s]
-    error:  5.2260, value:  6.3622:  19%|#9        | 96/500 [00:15<00:58,  6.93it/s]
-    error:  5.2260, value:  6.3622:  26%|##5       | 128/500 [00:15<00:37,  9.82it/s]
-    error:  10.3951, value:  8.2323:  26%|##5       | 128/500 [00:16<00:37,  9.82it/s]
-    error:  10.3951, value:  8.2323:  32%|###2      | 160/500 [00:17<00:30, 11.12it/s]
-    error:  4.2487, value:  5.7687:  32%|###2      | 160/500 [00:18<00:30, 11.12it/s] 
-    error:  4.2487, value:  5.7687:  38%|###8      | 192/500 [00:18<00:21, 14.59it/s]
-    error:  2.8104, value:  6.3621:  38%|###8      | 192/500 [00:19<00:21, 14.59it/s]
-    error:  2.8104, value:  6.3621:  45%|####4     | 224/500 [00:20<00:18, 14.98it/s]
-    error:  11.6726, value:  5.0193:  45%|####4     | 224/500 [00:21<00:18, 14.98it/s]
-    error:  11.6726, value:  5.0193:  51%|#####1    | 256/500 [00:22<00:14, 16.95it/s]
-    error:  39.3500, value:  2.2629:  51%|#####1    | 256/500 [00:22<00:14, 16.95it/s]
-    error:  39.3500, value:  2.2629:  58%|#####7    | 288/500 [00:24<00:13, 16.31it/s]
-    error:  4.7092, value:  8.1073:  58%|#####7    | 288/500 [00:24<00:13, 16.31it/s] 
-    error:  4.7092, value:  8.1073:  64%|######4   | 320/500 [00:25<00:09, 18.67it/s]
-    error:  3.6719, value:  1.8586:  64%|######4   | 320/500 [00:25<00:09, 18.67it/s]
-    error:  3.6719, value:  1.8586:  70%|#######   | 352/500 [00:26<00:06, 22.05it/s]
-    error:  6.3668, value:  6.8133:  70%|#######   | 352/500 [00:26<00:06, 22.05it/s]
-    error:  6.3668, value:  6.8133:  77%|#######6  | 384/500 [00:28<00:05, 19.34it/s]
-    error:  1.1323, value:  1.8882:  77%|#######6  | 384/500 [00:28<00:05, 19.34it/s]
-    error:  1.1323, value:  1.8882:  83%|########3 | 416/500 [00:29<00:04, 19.96it/s]
-    error:  2.3762, value:  4.3001:  83%|########3 | 416/500 [00:30<00:04, 19.96it/s]
-    error:  2.3762, value:  4.3001:  90%|########9 | 448/500 [00:31<00:02, 21.40it/s]
-    error:  2.6948, value:  1.9265:  90%|########9 | 448/500 [00:31<00:02, 21.40it/s]
-    error:  2.6948, value:  1.9265:  96%|#########6| 480/500 [00:33<00:01, 18.87it/s]
-    error:  2.3674, value:  3.9369:  96%|#########6| 480/500 [00:33<00:01, 18.87it/s]
-    error:  2.3674, value:  3.9369: : 512it [00:34, 20.63it/s]                       
-    error:  25.3075, value:  16.2305: : 512it [00:35, 20.63it/s]
+     13%|#2        | 64/500 [00:13<01:41,  4.31it/s]
+     19%|#9        | 96/500 [00:14<00:57,  7.06it/s]
+    error:  7.3956, value:  7.1762:  19%|#9        | 96/500 [00:15<00:57,  7.06it/s]
+    error:  7.3956, value:  7.1762:  26%|##5       | 128/500 [00:16<00:39,  9.45it/s]
+    error:  3.4867, value:  5.2715:  26%|##5       | 128/500 [00:16<00:39,  9.45it/s]
+    error:  3.4867, value:  5.2715:  32%|###2      | 160/500 [00:16<00:25, 13.39it/s]
+    error:  4.3506, value:  5.8031:  32%|###2      | 160/500 [00:17<00:25, 13.39it/s]
+    error:  4.3506, value:  5.8031:  38%|###8      | 192/500 [00:18<00:21, 14.10it/s]
+    error:  7.1165, value:  7.0962:  38%|###8      | 192/500 [00:19<00:21, 14.10it/s]
+    error:  7.1165, value:  7.0962:  45%|####4     | 224/500 [00:19<00:15, 17.34it/s]
+    error:  1.7117, value:  1.3231:  45%|####4     | 224/500 [00:20<00:15, 17.34it/s]
+    error:  1.7117, value:  1.3231:  51%|#####1    | 256/500 [00:20<00:11, 20.63it/s]
+    error:  1.4853, value:  2.0465:  51%|#####1    | 256/500 [00:21<00:11, 20.63it/s]
+    error:  1.4853, value:  2.0465:  58%|#####7    | 288/500 [00:22<00:10, 20.42it/s]
+    error:  1.8544, value:  2.1607:  58%|#####7    | 288/500 [00:23<00:10, 20.42it/s]
+    error:  1.8544, value:  2.1607:  64%|######4   | 320/500 [00:23<00:08, 21.92it/s]
+    error:  3.0820, value:  7.0829:  64%|######4   | 320/500 [00:24<00:08, 21.92it/s]
+    error:  3.0820, value:  7.0829:  70%|#######   | 352/500 [00:24<00:06, 23.69it/s]
+    error:  3.2982, value:  8.4382:  70%|#######   | 352/500 [00:25<00:06, 23.69it/s]
+    error:  3.2982, value:  8.4382:  77%|#######6  | 384/500 [00:26<00:05, 21.39it/s]
+    error:  8.4051, value:  2.6389:  77%|#######6  | 384/500 [00:26<00:05, 21.39it/s]
+    error:  8.4051, value:  2.6389:  83%|########3 | 416/500 [00:27<00:03, 23.42it/s]
+    error:  2.5833, value:  6.0319:  83%|########3 | 416/500 [00:28<00:03, 23.42it/s]
+    error:  2.5833, value:  6.0319:  90%|########9 | 448/500 [00:28<00:02, 24.67it/s]
+    error:  7.6658, value:  8.8299:  90%|########9 | 448/500 [00:29<00:02, 24.67it/s]
+    error:  7.6658, value:  8.8299:  96%|#########6| 480/500 [00:30<00:00, 23.89it/s]
+    error:  2.5799, value:  2.4106:  96%|#########6| 480/500 [00:30<00:00, 23.89it/s]
+    error:  2.5799, value:  2.4106: : 512it [00:31, 23.81it/s]                       
+    error:  3.0429, value:  6.0267: : 512it [00:31, 23.81it/s]
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 747-749
+.. GENERATED FROM PYTHON SOURCE LINES 734-736
 
 **Note**: As already mentioned above, to get a more reasonable performance,
 use a greater value for ``total_frames`` e.g. 500000.
 
-.. GENERATED FROM PYTHON SOURCE LINES 749-755
+.. GENERATED FROM PYTHON SOURCE LINES 736-742
 
 .. code-block:: default
 
@@ -1234,7 +1216,7 @@ use a greater value for ``total_frames`` e.g. 500000.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 756-773
+.. GENERATED FROM PYTHON SOURCE LINES 743-760
 
 .. code-block:: default
 
@@ -1250,7 +1232,7 @@ use a greater value for ``total_frames`` e.g. 500000.
             "grad_vals": grad_vals,
             "traj_lengths_training": traj_lengths,
             "traj_count": traj_count,
-            "weights": (params, buffers),
+            "weights": (params,),
         },
         "saved_results_tdlambda.pt",
     )
@@ -1262,7 +1244,7 @@ use a greater value for ``total_frames`` e.g. 500000.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 774-780
+.. GENERATED FROM PYTHON SOURCE LINES 761-767
 
 Let's compare the results on a single plot. Because the TD(lambda) version
 works better, we'll have fewer episodes collected for a given number of
@@ -1271,7 +1253,7 @@ frames (as there are more frames per episode).
 **Note**: As already mentioned above, to get a more reasonable performance,
 use a greater value for ``total_frames`` e.g. 500000.
 
-.. GENERATED FROM PYTHON SOURCE LINES 780-860
+.. GENERATED FROM PYTHON SOURCE LINES 767-847
 
 .. code-block:: default
 
@@ -1367,13 +1349,13 @@ use a greater value for ``total_frames`` e.g. 500000.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 861-864
+.. GENERATED FROM PYTHON SOURCE LINES 848-851
 
 Finally, we generate a new video to check what the algorithm has learnt.
 If all goes well, the duration should be significantly longer than with the
 initial, random rollout.
 
-.. GENERATED FROM PYTHON SOURCE LINES 864-869
+.. GENERATED FROM PYTHON SOURCE LINES 851-856
 
 .. code-block:: default
 
@@ -1393,26 +1375,26 @@ initial, random rollout.
 
     TensorDict(
         fields={
-            action: Tensor(torch.Size([9, 2]), dtype=torch.int64),
-            action_value: Tensor(torch.Size([9, 2]), dtype=torch.float32),
-            chosen_action_value: Tensor(torch.Size([9, 1]), dtype=torch.float32),
-            done: Tensor(torch.Size([9, 1]), dtype=torch.bool),
+            action: Tensor(torch.Size([23, 2]), dtype=torch.int64),
+            action_value: Tensor(torch.Size([23, 2]), dtype=torch.float32),
+            chosen_action_value: Tensor(torch.Size([23, 1]), dtype=torch.float32),
+            done: Tensor(torch.Size([23, 1]), dtype=torch.bool),
             next: LazyStackedTensorDict(
                 fields={
-                    pixels: Tensor(torch.Size([9, 4, 64, 64]), dtype=torch.float32)},
-                batch_size=torch.Size([9]),
+                    pixels: Tensor(torch.Size([23, 4, 64, 64]), dtype=torch.float32)},
+                batch_size=torch.Size([23]),
                 device=cpu,
                 is_shared=False),
-            pixels: Tensor(torch.Size([9, 4, 64, 64]), dtype=torch.float32),
-            pixels_save: Tensor(torch.Size([9, 400, 600, 3]), dtype=torch.uint8),
-            reward: Tensor(torch.Size([9, 1]), dtype=torch.float32)},
-        batch_size=torch.Size([9]),
+            pixels: Tensor(torch.Size([23, 4, 64, 64]), dtype=torch.float32),
+            pixels_save: Tensor(torch.Size([23, 400, 600, 3]), dtype=torch.uint8),
+            reward: Tensor(torch.Size([23, 1]), dtype=torch.float32)},
+        batch_size=torch.Size([23]),
         device=cpu,
         is_shared=False)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 870-874
+.. GENERATED FROM PYTHON SOURCE LINES 857-861
 
 .. code-block:: default
 
@@ -1427,7 +1409,7 @@ initial, random rollout.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 875-901
+.. GENERATED FROM PYTHON SOURCE LINES 862-888
 
 Conclusion and possible improvements
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1459,7 +1441,7 @@ algorithm. Other possible improvements could include:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 1 minutes  28.626 seconds)
+   **Total running time of the script:** ( 1 minutes  16.375 seconds)
 
 
 .. _sphx_glr_download_tutorials_coding_dqn.py:

@@ -25,7 +25,7 @@ We recommand reading the TensorDict tutorial before going through this one.
 .. GENERATED FROM PYTHON SOURCE LINES 8-16
 
 For a convenient usage of the ``TensorDict`` class with ``nn.Module``,
-TorchRL provides an interface between the two named ``TensorDictModule``.
+:obj:`tensordict` provides an interface between the two named ``TensorDictModule``.
 The ``TensorDictModule`` class is an ``nn.Module`` that takes a
 ``TensorDict`` as input when called.
 It is up to the user to define the keys to be read as input and output.
@@ -33,38 +33,32 @@ It is up to the user to define the keys to be read as input and output.
 TensorDictModule by examples
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. GENERATED FROM PYTHON SOURCE LINES 16-22
+.. GENERATED FROM PYTHON SOURCE LINES 16-23
 
 .. code-block:: default
+
 
 
     import torch
     import torch.nn as nn
     from tensordict import TensorDict
-    from torchrl.modules import TensorDictModule, TensorDictSequential
-
-
-
-.. rst-class:: sphx-glr-script-out
-
-.. code-block:: pytb
-
-    Traceback (most recent call last):
-      File "/__w/rl/rl/docs/source/reference/generated/tutorials/tensordict_module.py", line 20, in <module>
-        from torchrl.modules import TensorDictModule, TensorDictSequential
-    ImportError: cannot import name 'TensorDictModule' from 'torchrl.modules' (/__w/rl/rl/torchrl/modules/__init__.py)
+    from tensordict.nn import TensorDictModule, TensorDictSequential
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 23-27
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 29-33
 
 Example 1: Simple usage
 --------------------------------------
 We have a ``TensorDict`` with 2 entries ``"a"`` and ``"b"`` but only the
 value associated with ``"a"`` has to be read by the network.
 
-.. GENERATED FROM PYTHON SOURCE LINES 27-37
+.. GENERATED FROM PYTHON SOURCE LINES 33-43
 
 .. code-block:: default
 
@@ -79,7 +73,26 @@ value associated with ``"a"`` has to be read by the network.
     print(tensordict)
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 38-44
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    TensorDict(
+        fields={
+            a: Tensor(torch.Size([5, 3]), dtype=torch.float32),
+            a_out: Tensor(torch.Size([5, 10]), dtype=torch.float32),
+            b: Tensor(torch.Size([5, 4, 3]), dtype=torch.float32)},
+        batch_size=torch.Size([5]),
+        device=None,
+        is_shared=False)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 44-50
 
 Example 2: Multiple inputs
 --------------------------------------
@@ -88,7 +101,7 @@ averages them into a single output tensor. To make a ``TensorDictModule``
 instance read multiple input values, one must register them in the
 ``in_keys`` keyword argument of the constructor.
 
-.. GENERATED FROM PYTHON SOURCE LINES 44-56
+.. GENERATED FROM PYTHON SOURCE LINES 50-62
 
 .. code-block:: default
 
@@ -105,7 +118,13 @@ instance read multiple input values, one must register them in the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 57-72
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 63-78
 
 .. code-block:: default
 
@@ -125,7 +144,26 @@ instance read multiple input values, one must register them in the
     mergelinear(tensordict)
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 73-79
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+
+    TensorDict(
+        fields={
+            a: Tensor(torch.Size([5, 3]), dtype=torch.float32),
+            b: Tensor(torch.Size([5, 4]), dtype=torch.float32),
+            output: Tensor(torch.Size([5, 10]), dtype=torch.float32)},
+        batch_size=torch.Size([5]),
+        device=None,
+        is_shared=False)
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 79-85
 
 Example 3: Multiple outputs
 --------------------------------------
@@ -134,7 +172,7 @@ multiple outputs. To make a ``TensorDictModule`` instance write to multiple
 output values, one must register them in the ``out_keys`` keyword argument
 of the constructor.
 
-.. GENERATED FROM PYTHON SOURCE LINES 79-91
+.. GENERATED FROM PYTHON SOURCE LINES 85-97
 
 .. code-block:: default
 
@@ -151,7 +189,13 @@ of the constructor.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 92-102
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 98-108
 
 .. code-block:: default
 
@@ -166,7 +210,26 @@ of the constructor.
     splitlinear(tensordict)
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 103-125
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+
+    TensorDict(
+        fields={
+            a: Tensor(torch.Size([5, 3]), dtype=torch.float32),
+            output_1: Tensor(torch.Size([5, 4]), dtype=torch.float32),
+            output_2: Tensor(torch.Size([5, 10]), dtype=torch.float32)},
+        batch_size=torch.Size([5]),
+        device=None,
+        is_shared=False)
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 109-131
 
 When having multiple input keys and output keys, make sure they match the
 order in the module.
@@ -191,7 +254,7 @@ tensordict following the sequence of modules provided.
 We can also gather the inputs needed by ``TensorDictSequential`` with the
 ``in_keys`` property, and the outputs keys are found at the ``out_keys`` attribute.
 
-.. GENERATED FROM PYTHON SOURCE LINES 125-143
+.. GENERATED FROM PYTHON SOURCE LINES 131-149
 
 .. code-block:: default
 
@@ -214,19 +277,25 @@ We can also gather the inputs needed by ``TensorDictSequential`` with the
     assert split_and_merge_linear(tensordict)["output"].shape == torch.Size([5, 13])
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 144-150
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 150-154
 
 Example 5: Compatibility with functorch
 -----------------------------------------
-``TensorDictModule`` comes with its own ``make_functional_with_buffers``
-method to make it functional (you should not be using
-``functorch.make_functional_with_buffers(tensordictmodule)``, that will
-not work in general).
+tensordict.nn is compatible with functorch. It also comes with its own functional
+utilities. Let us have a look:
 
-.. GENERATED FROM PYTHON SOURCE LINES 150-161
+.. GENERATED FROM PYTHON SOURCE LINES 154-167
 
 .. code-block:: default
 
+
+    import functorch
 
     tensordict = TensorDict({"a": torch.randn(5, 3)}, batch_size=[5])
 
@@ -235,38 +304,105 @@ not work in general).
         in_keys=["a"],
         out_keys=["output_1", "output_2"],
     )
-    func, (params, buffers) = splitlinear.make_functional_with_buffers()
-    func(tensordict, params=params, buffers=buffers)
+    func, params, buffers = functorch.make_functional_with_buffers(splitlinear)
+    print(func(params, buffers, tensordict))
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 162-164
 
-We can also use the ``vmap`` operator, here's an example of
-model ensembling with it:
 
-.. GENERATED FROM PYTHON SOURCE LINES 164-175
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    TensorDict(
+        fields={
+            a: Tensor(torch.Size([5, 3]), dtype=torch.float32),
+            output_1: Tensor(torch.Size([5, 4]), dtype=torch.float32),
+            output_2: Tensor(torch.Size([5, 10]), dtype=torch.float32)},
+        batch_size=torch.Size([5]),
+        device=None,
+        is_shared=False)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 168-171
+
+This can be used with the vmap operator. For example, we use 3 replicas of the
+params and buffers and execute a vectorized map over these for a single batch
+of data:
+
+.. GENERATED FROM PYTHON SOURCE LINES 171-176
 
 .. code-block:: default
 
 
+    params_expand = [p.expand(3, *p.shape) for p in params]
+    buffers_expand = [p.expand(3, *p.shape) for p in buffers]
+    print(functorch.vmap(func, (0, 0, None))(params_expand, buffers_expand, tensordict))
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    TensorDict(
+        fields={
+            a: Tensor(torch.Size([3, 5, 3]), dtype=torch.float32),
+            output_1: Tensor(torch.Size([3, 5, 4]), dtype=torch.float32),
+            output_2: Tensor(torch.Size([3, 5, 10]), dtype=torch.float32)},
+        batch_size=torch.Size([3, 5]),
+        device=None,
+        is_shared=False)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 177-179
+
+We can also use the native :obj:`get_functional()` function from tensordict.nn,
+which modifies the module to make it accept the parameters as regular inputs:
+
+.. GENERATED FROM PYTHON SOURCE LINES 179-194
+
+.. code-block:: default
+
+
+    from tensordict.nn import make_functional
+
     tensordict = TensorDict({"a": torch.randn(5, 3)}, batch_size=[5])
     num_models = 10
     model = TensorDictModule(nn.Linear(3, 4), in_keys=["a"], out_keys=["output"])
-    fmodel, (params, buffers) = model.make_functional_with_buffers()
-    params = [torch.randn(num_models, *p.shape, device=p.device) for p in params]
-    buffers = [torch.randn(num_models, *b.shape, device=b.device) for b in buffers]
-    result_td = fmodel(tensordict, params=params, buffers=buffers, vmap=True)
+    params = make_functional(model)
+    # we stack two groups of parameters to show the vmap usage:
+    params = torch.stack([params, params.apply(lambda x: torch.zeros_like(x))], 0)
+    result_td = functorch.vmap(model, (None, 0))(tensordict, params)
     print("the output tensordict shape is: ", result_td.shape)
 
 
+    from tensordict.nn import ProbabilisticTensorDictModule
 
-.. GENERATED FROM PYTHON SOURCE LINES 176-216
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    the output tensordict shape is:  torch.Size([2, 5])
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 195-224
 
 Do's and don't with TensorDictModule
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Don't use ``nn.Module`` wrappers with ``TensorDictModule`` componants.
-This would break some of ``TensorDictModule`` features such as ``functorch``
-compatibility.
 
 Don't use ``nn.Sequence``, similar to ``nn.Module``, it would break features
 such as ``functorch`` compatibility. Do use ``TensorDictSequential`` instead.
@@ -277,14 +413,6 @@ tensordict is just the input modified in-place:
   tensordict = module(tensordict)  # ok!
 
   tensordict_out = module(tensordict)  # don't!
-
-Don't use ``make_functional_with_buffers`` from ``functorch`` directly but
-use ``TensorDictModule.make_functional_with_buffers`` instead.
-
-TensorDictModule for RL
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TorchRL provides a few RL-specific ``TensorDictModule`` instances that
-serves domain-specific needs.
 
 ``ProbabilisticTensorDictModule``
 ----------------------------------
@@ -303,16 +431,12 @@ distribution (through a regular ``__call__()`` to the module).
 One can find the parameters in the output tensordict as well as the log
 probability if needed.
 
-.. GENERATED FROM PYTHON SOURCE LINES 216-242
+.. GENERATED FROM PYTHON SOURCE LINES 224-246
 
 .. code-block:: default
 
 
-    from torchrl.modules import (
-        NormalParamWrapper,
-        ProbabilisticTensorDictModule,
-        TanhNormal,
-    )
+    from torchrl.modules import NormalParamWrapper, TanhNormal
 
     td = TensorDict(
         {"input": torch.randn(3, 4), "hidden": torch.randn(3, 8)},
@@ -334,7 +458,36 @@ probability if needed.
     print(f"TensorDict after going through module now as keys action, loc and scale: {td}")
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 243-261
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    TensorDict before going through module: TensorDict(
+        fields={
+            hidden: Tensor(torch.Size([3, 8]), dtype=torch.float32),
+            input: Tensor(torch.Size([3, 4]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+    TensorDict after going through module now as keys action, loc and scale: TensorDict(
+        fields={
+            action: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            hidden: Tensor(torch.Size([3, 8]), dtype=torch.float32),
+            input: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            loc: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            sample_log_prob: Tensor(torch.Size([3, 1]), dtype=torch.float32),
+            scale: Tensor(torch.Size([3, 4]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 247-265
 
 ``Actor``
 ------------------------------
@@ -355,7 +508,7 @@ wraps both an actor network and a value Network.
 ``ActorCriticOperator`` will first compute the action from the actor and
 then the value according to this action.
 
-.. GENERATED FROM PYTHON SOURCE LINES 261-309
+.. GENERATED FROM PYTHON SOURCE LINES 265-313
 
 .. code-block:: default
 
@@ -408,7 +561,59 @@ then the value according to this action.
     print(f"Critic: {td_clone}")  # no action
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 310-333
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    TensorDict(
+        fields={
+            observation: Tensor(torch.Size([3, 4]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+    TensorDict(
+        fields={
+            action: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            hidden: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            loc: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            observation: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            sample_log_prob: Tensor(torch.Size([3, 1]), dtype=torch.float32),
+            scale: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            state_action_value: Tensor(torch.Size([3, 1]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+    Policy: TensorDict(
+        fields={
+            action: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            hidden: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            loc: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            observation: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            sample_log_prob: Tensor(torch.Size([3, 1]), dtype=torch.float32),
+            scale: Tensor(torch.Size([3, 4]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+    Critic: TensorDict(
+        fields={
+            action: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            hidden: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            loc: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            observation: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            sample_log_prob: Tensor(torch.Size([3, 1]), dtype=torch.float32),
+            scale: Tensor(torch.Size([3, 4]), dtype=torch.float32),
+            state_action_value: Tensor(torch.Size([3, 1]), dtype=torch.float32)},
+        batch_size=torch.Size([3]),
+        device=None,
+        is_shared=False)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 314-337
 
 Other blocks exist such as:
 
@@ -434,7 +639,7 @@ We have let the positional encoders aside for simplicity.
 Let's first import the classical transformers blocks
 (see ``src/transformer.py`` for more details.)
 
-.. GENERATED FROM PYTHON SOURCE LINES 333-342
+.. GENERATED FROM PYTHON SOURCE LINES 337-346
 
 .. code-block:: default
 
@@ -448,7 +653,13 @@ Let's first import the classical transformers blocks
     )
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 343-351
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 347-355
 
 We first create the ``AttentionBlockTensorDict``, the attention block using
 ``TensorDictModule`` and ``TensorDictSequential``.
@@ -459,7 +670,7 @@ to indicate which key each of them must read and write. Unlike
 input/output. Moreover, its components inputs need not be identical to the
 previous layers outputs, allowing us to code complicated neural architecture.
 
-.. GENERATED FROM PYTHON SOURCE LINES 351-388
+.. GENERATED FROM PYTHON SOURCE LINES 355-392
 
 .. code-block:: default
 
@@ -501,12 +712,18 @@ previous layers outputs, allowing us to code complicated neural architecture.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 389-391
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 393-395
 
 We build the encoder and decoder blocks that will be part of the transformer
 thanks to ``TensorDictModule``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 391-460
+.. GENERATED FROM PYTHON SOURCE LINES 395-464
 
 .. code-block:: default
 
@@ -580,7 +797,13 @@ thanks to ``TensorDictModule``.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 461-468
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 465-472
 
 We create the transformer encoder and decoder.
 
@@ -590,7 +813,7 @@ keys and values.
 For a decoder, we now can extract info from ``X_from`` into ``X_to``.
 ``X_from`` will map to queries whereas ``X_from`` will map to keys and values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 468-563
+.. GENERATED FROM PYTHON SOURCE LINES 472-567
 
 .. code-block:: default
 
@@ -690,11 +913,17 @@ For a decoder, we now can extract info from ``X_from`` into ``X_to``.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 564-565
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 568-569
 
 We now test our new ``TransformerTensorDict``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 565-598
+.. GENERATED FROM PYTHON SOURCE LINES 569-602
 
 .. code-block:: default
 
@@ -732,7 +961,30 @@ We now test our new ``TransformerTensorDict``.
     tokens
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 599-605
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+
+    TensorDict(
+        fields={
+            Attn: Tensor(torch.Size([8, 2, 10, 3]), dtype=torch.float32),
+            K: Tensor(torch.Size([8, 2, 3, 5]), dtype=torch.float32),
+            Q: Tensor(torch.Size([8, 2, 10, 5]), dtype=torch.float32),
+            V: Tensor(torch.Size([8, 2, 3, 5]), dtype=torch.float32),
+            X_decode: Tensor(torch.Size([8, 10, 6]), dtype=torch.float32),
+            X_encode: Tensor(torch.Size([8, 3, 5]), dtype=torch.float32),
+            X_out: Tensor(torch.Size([8, 10, 6]), dtype=torch.float32)},
+        batch_size=torch.Size([8]),
+        device=None,
+        is_shared=False)
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 603-609
 
 We've achieved to create a transformer with ``TensorDictModule``. This
 shows that ``TensorDictModule`` is a flexible module that can implement
@@ -741,7 +993,7 @@ complex operarations.
 Benchmarking
 ------------------------------
 
-.. GENERATED FROM PYTHON SOURCE LINES 605-608
+.. GENERATED FROM PYTHON SOURCE LINES 609-612
 
 .. code-block:: default
 
@@ -749,7 +1001,13 @@ Benchmarking
     from tutorials.src.transformer import Transformer
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 609-619
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 613-623
 
 .. code-block:: default
 
@@ -764,7 +1022,13 @@ Benchmarking
     num_blocks = 6
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 620-629
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 624-633
 
 .. code-block:: default
 
@@ -778,7 +1042,13 @@ Benchmarking
     )
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 630-634
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 634-638
 
 .. code-block:: default
 
@@ -787,7 +1057,13 @@ Benchmarking
     X_decode = torch.randn(batch_size, from_len, from_dim)
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 635-648
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 639-652
 
 .. code-block:: default
 
@@ -805,7 +1081,13 @@ Benchmarking
     )
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 649-654
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 653-658
 
 .. code-block:: default
 
@@ -815,11 +1097,17 @@ Benchmarking
     )
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 655-656
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 659-660
 
 **Inference Time**
 
-.. GENERATED FROM PYTHON SOURCE LINES 656-659
+.. GENERATED FROM PYTHON SOURCE LINES 660-663
 
 .. code-block:: default
 
@@ -827,7 +1115,13 @@ Benchmarking
     import time
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 660-666
+
+
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 664-670
 
 .. code-block:: default
 
@@ -838,7 +1132,19 @@ Benchmarking
     print("Execution time:", t2 - t1, "seconds")
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 667-673
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    Execution time: 0.015361785888671875 seconds
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 671-677
 
 .. code-block:: default
 
@@ -849,7 +1155,19 @@ Benchmarking
     print("Execution time:", t4 - t3, "seconds")
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 674-678
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    Execution time: 0.009885072708129883 seconds
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 678-682
 
 We can see on this minimal example that the overhead introduced by
 ``TensorDictModule`` is marginal.
@@ -859,7 +1177,7 @@ Have fun with TensorDictModule!
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.002 seconds)
+   **Total running time of the script:** ( 0 minutes  0.140 seconds)
 
 
 .. _sphx_glr_download_tutorials_tensordict_module.py:
